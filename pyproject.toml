@@ -1,0 +1,19 @@
+[project]
+name = "sino-account"
+version = "0.1.0"
+description = "Query Shioaji account portfolio information"
+requires-python = ">=3.8"
+dependencies = [
+    "shioaji>=1.2.5",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+query-portfolio = "sino_account.query_portfolio:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
