@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 query-portfolio = "sino_account.query_portfolio:main"
+sino-gui = "sino_account.gui.app:main"
 
 [build-system]
 requires = ["setuptools>=61"]
