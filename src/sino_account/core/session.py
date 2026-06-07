@@ -53,7 +53,7 @@ def clear_api() -> None:
     _environment = "unknown"
 
 
-def perform_login(api: sj.Shioaji) -> None:
+def perform_login(api: sj.Shioaji, *, fetch_contract: bool = False) -> None:
     load_env()
     api_key = os.environ.get("SJ_API_KEY")
     secret_key = os.environ.get("SJ_SEC_KEY")
@@ -65,7 +65,7 @@ def perform_login(api: sj.Shioaji) -> None:
     api.login(
         api_key=api_key,
         secret_key=secret_key,
-        fetch_contract=False,
+        fetch_contract=fetch_contract,
         subscribe_trade=False,
     )
 
