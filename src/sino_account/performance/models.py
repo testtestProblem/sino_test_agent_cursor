@@ -58,3 +58,23 @@ class PerformanceReport:
     by_stock: list[StockContribution] = field(default_factory=list)
     trades: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DailyNavPoint:
+    date: str
+    nav: float
+    cash: float
+    market_value: float
+
+
+@dataclass
+class DailyNavSeries:
+    start: str
+    end: str
+    points: list[DailyNavPoint] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    method_note: str = "每日資金水位為估算值，非券商官方 NAV"
+    snapshot_cash: float | None = None
+    snapshot_market_value: float | None = None
+    snapshot_nav: float | None = None

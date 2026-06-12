@@ -51,6 +51,7 @@ def test_position_market_value_uses_lot_size() -> None:
         {"code": "2330", "quantity": 1, "price": 2000.0, "last_price": 1980.0, "pnl": -20000},
         {"code": "empty", "quantity": 0, "price": 100.0, "last_price": 110.0, "pnl": 0},
     ]
+    # price * shares + pnl (not last_price * shares)
     assert calc_position_market_value(positions) == 31_000 + 1_980_000
 
 

@@ -15,6 +15,7 @@ from sino_account.functions.get_account_balance import get_account_balance
 from sino_account.functions.get_account_info import get_account_info
 from sino_account.functions.get_margin import get_margin
 from sino_account.functions.get_positions import get_positions
+from sino_account.functions.get_positions2 import format_positions2_report, get_positions2
 from sino_account.functions.get_profit_loss import default_date_range, get_profit_loss
 from sino_account.functions.get_settlements import get_settlements
 from sino_account.functions.login import login, logout
@@ -109,6 +110,7 @@ class ShioajiDebugApp:
             ("Get Account Info", self._on_get_account_info),
             ("Get Account Balance", self._on_get_account_balance),
             ("Get Positions", self._on_get_positions),
+            ("Get Positions 2", self._on_get_positions2),
             ("Get Margin", self._on_get_margin),
             ("Get Profit/Loss", self._on_get_profit_loss),
             ("Get Settlements", self._on_get_settlements),
@@ -165,6 +167,10 @@ class ShioajiDebugApp:
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert(tk.END, json.dumps(payload, ensure_ascii=False, indent=2, default=str))
 
+    def _set_text_output(self, text: str) -> None:
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert(tk.END, text)
+
     def _set_error(self, exc: Exception) -> None:
         self.output_text.delete("1.0", tk.END)
         self.output_text.insert(tk.END, f"Error: {type(exc).__name__}: {exc}")
@@ -207,7 +213,7 @@ class ShioajiDebugApp:
 
     def _on_login(self) -> None:
         def action() -> dict[str, Any]:
-            result = login()
+            result = login(fetch_contract=True)
             accounts = session.get_api().list_accounts() if session.is_logged_in() else []
             return {"result": result, "accounts": accounts}
 
@@ -252,6 +258,25 @@ class ShioajiDebugApp:
             "get_positions",
             lambda selected=account: get_positions(selected),
         )
+
+    def _on_get_positions2(self) -> None:
+        account = self._selected_account()
+
+        def action() -> str:
+            return format_positions2_report(get_positions2(account))
+
+        def on_success(text: str) -> None:
+            self._busy = False
+            self._set_text_output(text)
+            self._update_status()
+
+        if self._busy:
+            self._set_error(RuntimeError("Another request is still running."))
+            return
+
+        self._busy = True
+        self.status_var.set("Status: running get_positions2...")
+        self._api_worker.submit(action, on_success, self._finish_error)
 
     def _on_get_margin(self) -> None:
         account = self._selected_account()
