@@ -18,6 +18,8 @@
 ```
 test/
 ├── docs/
+│   ├── SINO_GUI.md                 # sino-gui 使用指南
+│   ├── SINO_GUI_ARCHITECTURE.md    # sino-gui 程式架構
 │   ├── NAV_CHART_PLAN.md           # 需求規劃（本專案新增）
 │   ├── NAV_CHART_ARCHITECTURE.md   # 程式架構（本文件）
 │   ├── PERFORMANCE_3M_PLAN.md
@@ -26,7 +28,7 @@ test/
 │   ├── core/           # 沿用：session、serialize
 │   ├── functions/      # 沿用：get_settlements 等
 │   ├── gui/
-│   │   ├── app.py              # Debug GUI（不修改）
+│   │   ├── app.py              # sino-gui Debug GUI（見 SINO_GUI_ARCHITECTURE.md）
 │   │   └── nav_chart_app.py    # 新增：獨立水位圖 GUI
 │   └── performance/
 │       ├── data/       # 沿用：kbars、profit_loss、snapshot

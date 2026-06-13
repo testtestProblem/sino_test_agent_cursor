@@ -17,12 +17,16 @@
 ```
 test/
 ├── docs/
+│   ├── SINO_GUI.md                     # sino-gui 使用指南
+│   ├── SINO_GUI_ARCHITECTURE.md        # sino-gui 程式架構
+│   ├── SINO_API_GUIDE.md               # Shioaji 帳務 API 使用指南
+│   ├── SINO_POSITION_ALGORITHMS.md     # 持倉股數、市值、NAV 演算法
 │   ├── PERFORMANCE_3M_PLAN.md          # 需求規劃（本專案新增）
 │   └── PERFORMANCE_3M_ARCHITECTURE.md # 程式架構（本文件）
 ├── src/sino_account/
 │   ├── core/           # 沿用：session、serialize
 │   ├── functions/      # 沿用：login、get_* 等 debug 函數
-│   ├── gui/            # 擴充：新增績效頁籤
+│   ├── gui/            # sino-gui（app.py）及 nav-chart-gui 等
 │   └── performance/    # 新增：績效專用套件
 ├── data/cache/         # 新增：kbars 本地快取（實作階段）
 └── pyproject.toml      # 擴充：新增 performance-3m CLI
@@ -34,8 +38,8 @@ test/
 |------|------|------|
 | Session | `core/session.py` | 共用 API 連線、`.env` 載入 |
 | Serialize | `core/serialize.py` | Shioaji 回傳物件 → JSON 安全格式 |
-| ApiWorker | `gui/app.py` | GUI 單一 API 執行緒（績效頁籤沿用） |
-| 既有 functions | `functions/*.py` | Debug GUI 按鈕測試（不修改） |
+| ApiWorker | `gui/app.py` | GUI 單一 API 執行緒（sino-gui / 績效 GUI 沿用） |
+| 既有 functions | `functions/*.py` | Debug GUI 按鈕測試（見 [SINO_GUI_ARCHITECTURE.md](./SINO_GUI_ARCHITECTURE.md)） |
 
 ---
 
