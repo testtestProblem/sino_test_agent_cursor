@@ -2,11 +2,13 @@
 
 ## 1. 概述
 
-`sino-gui` 是永豐金 Shioaji API 的 **Debug GUI**（Tkinter），用於手動測試帳務查詢：登入、餘額、持倉、損益、交割等。適合開發階段驗證 API 回傳與帳戶資料。
+`sino-gui` 是永豐金 Shioaji API 的 **Debug GUI**（Tkinter），用於手動測試帳務查詢與行情查詢：登入、餘額、持倉、損益、交割、股票 K 線等。適合開發階段驗證 API 回傳與帳戶資料。
 
 - **CLI 入口**：[`pyproject.toml`](../pyproject.toml) → `sino-gui = sino_account.gui.app:main`
 - **主程式**：[`src/sino_account/gui/app.py`](../src/sino_account/gui/app.py)
 - **技術架構**（模組依賴、執行緒、Positions 2 演算法）：見 [SINO_GUI_ARCHITECTURE.md](./SINO_GUI_ARCHITECTURE.md)
+
+`sino_gui` branch 僅保留 `sino-gui` 入口，不含 `performance-3m`、`nav-chart-gui` 等 CLI。
 
 ---
 
@@ -18,8 +20,6 @@
 | 套件 | `shioaji`、`python-dotenv`（`pip install -e .` 會一併安裝） |
 | GUI | Tkinter（Windows / macOS 通常隨 Python 內建） |
 | 憑證 | 永豐 Shioaji API Key（`.env` 設定） |
-
-> `matplotlib` 為 `nav-chart-gui` 依賴，`sino-gui` 本身不使用。
 
 ---
 
@@ -76,6 +76,7 @@ python -m sino_account.gui.app
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Account [下拉]   Begin [日期]   End [日期]                  │
+│ Code [2330]      （K 線查詢用，如 2330、0050）              │
 ├──────────────┬──────────────────────────────────────────────┤
 │ Login        │ Result                                       │
 │ Logout       │ ┌──────────────────────────────────────────┐ │
@@ -89,14 +90,17 @@ python -m sino_account.gui.app
 | 區域 | 說明 |
 |------|------|
 | **Account** | 登入後顯示帳戶列表，格式 `S \| BROKER_ID-ACCOUNT_ID` |
-| **Begin / End** | 僅 **Get Profit/Loss** 使用，預設為當月 1 日～今天 |
+| **Begin / End** | 日期區間 `YYYY-MM-DD`；**Get Profit/Loss**、**Get Stock Kbars**、**Get Stock Kbars 2** 使用；預設為當月 1 日～今天 |
+| **Code** | 股票代號；**Get Stock Kbars** / **Get Stock Kbars 2** 使用；預設 `2330` |
 | **左側按鈕** | 觸發 API 查詢 |
-| **Result** | 查詢結果（多數為 JSON；Get Positions 2 為表格文字） |
+| **Result** | 查詢結果（多數為 JSON；Positions 2 / Kbars 為表格文字） |
 | **Status** | 登入狀態或目前執行的動作 |
 
 ---
 
 ## 6. 按鈕操作
+
+### 6.1 帳務查詢
 
 | 按鈕 | 前置條件 | 輸出 | 說明 |
 |------|----------|------|------|
@@ -105,28 +109,50 @@ python -m sino_account.gui.app
 | **Get Account Info** | 已登入 | JSON | 所有帳戶的 `account_type`、`broker_id`、`account_id` 等 |
 | **Get Account Balance** | 已登入 + 選帳戶 | JSON | 現金餘額 `acc_balance` |
 | **Get Positions** | 已登入 + 選帳戶 | JSON | 原始 `list_positions()`（預設整股） |
-| **Get Positions 2** | 已登入 + 選帳戶 | 純文字 | 合併整股/零股、股票名稱、持倉市值與 NAV 合計 |
+| **Get Positions 2** | 已登入 + 選帳戶 | 純文字 | 合併整股/零股、名稱、市值、損益%、NAV 合計 |
 | **Get Margin** | 已登入 + 選帳戶 | JSON | 期貨保證金（主要供期貨帳戶） |
-| **Get Profit/Loss** | 已登入 + 選帳戶 + 日期 | JSON | 區間內已實現損益明細 |
+| **Get Profit/Loss** | 已登入 + 選帳戶 + Begin/End | JSON | 區間內已實現損益明細 |
 | **Get Settlements** | 已登入 + 選帳戶 | JSON | 未來交割排程（T+0～T+2） |
 
-### 6.1 建議操作流程
+### 6.2 行情查詢（K 線）
+
+| 按鈕 | 前置條件 | 輸出 | 說明 |
+|------|----------|------|------|
+| **Get Stock Kbars** | 已登入 + Code + Begin/End | 純文字 | 分 K 歷史行情（開高低收、量、額）；超過 80 筆省略中間 |
+| **Get Stock Kbars 2** | 已登入 + Code + Begin/End | 純文字 | 依交易日彙總，只顯示每日**開盤**與**收盤** |
+
+行情查詢需 Login 時已載入商品檔（`fetch_contract=True`）。實作見 [`get_stock_kbars.py`](../src/sino_account/functions/get_stock_kbars.py)。
+
+### 6.3 建議操作流程
 
 1. 按 **Login**（首次可能較慢，正在下載商品檔）
-2. 在 **Account** 選擇證券帳戶（`S | …`）
-3. 按所需查詢按鈕
+2. 帳務查詢：在 **Account** 選擇證券帳戶（`S | …`），按所需按鈕
+3. K 線查詢：輸入 **Code** 與 **Begin / End**，按 **Get Stock Kbars** 或 **Get Stock Kbars 2**
 4. 結束後按 **Logout**
 
-### 6.2 Get Positions vs Get Positions 2
+### 6.4 Get Positions vs Get Positions 2
 
 | | Get Positions | Get Positions 2 |
 |--|---------------|-----------------|
 | 格式 | JSON | 固定寬度表格 |
 | 資料來源 | 僅整股 API | 整股 + 零股 API，再合併 |
 | 股票名稱 | 無 | 有（需 Login 下載商品檔） |
-| 合計 | 無 | 現金、持倉市值、未實現損益、NAV |
+| 損益% | 無 | 有（`pnl ÷ 成本 × 100`） |
+| 合計 | 無 | 現金、持倉市值、未實現損益、未實現損益%、NAV |
 
-Positions 2 的合併與市值公式見 [SINO_GUI_ARCHITECTURE.md §7](./SINO_GUI_ARCHITECTURE.md#7-get-positions-2-演算法)。
+Positions 2 表格欄位：代號、名稱、張/股、股數、成本價、現價、損益、**損益%**、市值。
+
+合併與市值公式見 [SINO_GUI_ARCHITECTURE.md §9](./SINO_GUI_ARCHITECTURE.md#9-get-positions-2-演算法)、[INVENTORY_MARKET_VALUE.md](./INVENTORY_MARKET_VALUE.md)。
+
+### 6.5 Get Stock Kbars vs Get Stock Kbars 2
+
+| | Get Stock Kbars | Get Stock Kbars 2 |
+|--|-----------------|-------------------|
+| API | `api.kbars()` 分 K | 同上，再依日彙總 |
+| 粒度 | 每分鐘一根 K | 每個交易日一行 |
+| 欄位 | 時間、開、高、低、收、量、額 | 日期、開盤、收盤 |
+| 開盤 | 每根 K 的 Open | 當日第一根 K 的 Open |
+| 收盤 | 每根 K 的 Close | 當日最後一根 K 的 Close |
 
 ---
 
@@ -158,28 +184,31 @@ Positions 2 的合併與市值公式見 [SINO_GUI_ARCHITECTURE.md §7](./SINO_GU
 
 Positions 2 市值公式為 `現價 × 合併後股數`，與券商庫存「現值」欄對齊。合併邏輯見架構文件。
 
-### 7.6 Windows 中文或路徑問題
+### 7.6 K 線查詢無資料
+
+- 確認已 **Login** 且商品檔已載入
+- **Code** 是否正確（如 `2330`、`0050`）
+- **Begin / End** 是否為有交易的日期（格式 `YYYY-MM-DD`）
+- 行情 API 有流量限制，避免短時間大量查詢
+
+### 7.7 Windows 中文或路徑問題
 
 專案路徑含中文時，請在專案根目錄執行 `pip install -e .` 與 `sino-gui`。
 
 ---
 
-## 8. CLI 入口
+## 8. 連線注意事項
 
-本 branch 僅保留 `sino-gui`：
-
-```bash
-sino-gui
-```
-
-共用 core/session.py，**同一時間只應有一個程式**持有 Shioaji 連線。
+- 共用 `core/session.py`，**同一時間只應有一個程式**持有 Shioaji 連線
+- 帳務 API 約 5 秒內 25 次；Positions 2 連續查詢間有 `throttle()`
+- 行情 `kbars` 亦有流量限制（見 `sino_API_full.md`）
 
 ---
 
 ## 9. 相關文件
 
-- SINO_GUI_ARCHITECTURE.md — 完整技術架構
-- SINO_API_GUIDE.md — Shioaji 帳務 API 使用指南
-- SINO_POSITION_ALGORITHMS.md — 持倉股數、市值、NAV 演算法
-- INVENTORY_MARKET_VALUE.md — 庫存市值演算法與 API 用法
-- sino_API_full.md — Shioaji API 參考
+- [SINO_GUI_ARCHITECTURE.md](./SINO_GUI_ARCHITECTURE.md) — 完整技術架構
+- [SINO_API_GUIDE.md](./SINO_API_GUIDE.md) — Shioaji 帳務 API 使用指南
+- [SINO_POSITION_ALGORITHMS.md](./SINO_POSITION_ALGORITHMS.md) — 持倉股數、市值、NAV 演算法
+- [INVENTORY_MARKET_VALUE.md](./INVENTORY_MARKET_VALUE.md) — 庫存市值演算法與 API 用法
+- [sino_API_full.md](../sino_API_full.md) — Shioaji API 參考（含 Kbars）
