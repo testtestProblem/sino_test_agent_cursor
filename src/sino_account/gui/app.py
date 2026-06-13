@@ -18,6 +18,12 @@ from sino_account.functions.get_positions import get_positions
 from sino_account.functions.get_positions2 import format_positions2_report, get_positions2
 from sino_account.functions.get_profit_loss import default_date_range, get_profit_loss
 from sino_account.functions.get_settlements import get_settlements
+from sino_account.functions.get_stock_kbars import (
+    format_kbars2_report,
+    format_kbars_report,
+    get_stock_kbars,
+    get_stock_kbars2,
+)
 from sino_account.functions.login import login, logout
 
 
@@ -98,6 +104,15 @@ class ShioajiDebugApp:
         self.end_var = tk.StringVar(value=default_end)
         ttk.Entry(top_frame, textvariable=self.end_var, width=12).grid(row=0, column=5, sticky=tk.W)
 
+        ttk.Label(top_frame, text="Code").grid(row=1, column=0, sticky=tk.W, padx=(0, 8), pady=(8, 0))
+        self.code_var = tk.StringVar(value="2330")
+        ttk.Entry(top_frame, textvariable=self.code_var, width=12).grid(
+            row=1, column=1, sticky=tk.W, pady=(8, 0)
+        )
+        ttk.Label(top_frame, text="（K 線查詢用，如 2330、0050）").grid(
+            row=1, column=2, columnspan=4, sticky=tk.W, padx=(16, 0), pady=(8, 0)
+        )
+
         body_frame = ttk.Frame(self.root, padding=8)
         body_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -114,6 +129,8 @@ class ShioajiDebugApp:
             ("Get Margin", self._on_get_margin),
             ("Get Profit/Loss", self._on_get_profit_loss),
             ("Get Settlements", self._on_get_settlements),
+            ("Get Stock Kbars", self._on_get_stock_kbars),
+            ("Get Stock Kbars 2", self._on_get_stock_kbars2),
         ]
         for index, (label, handler) in enumerate(buttons):
             ttk.Button(button_frame, text=label, command=handler, width=22).grid(
@@ -304,6 +321,48 @@ class ShioajiDebugApp:
             "get_settlements",
             lambda selected=account: get_settlements(selected),
         )
+
+    def _on_get_stock_kbars(self) -> None:
+        code = self.code_var.get().strip()
+        begin = self.begin_var.get().strip()
+        end = self.end_var.get().strip()
+
+        def action() -> str:
+            return format_kbars_report(get_stock_kbars(code, begin, end))
+
+        def on_success(text: str) -> None:
+            self._busy = False
+            self._set_text_output(text)
+            self._update_status()
+
+        if self._busy:
+            self._set_error(RuntimeError("Another request is still running."))
+            return
+
+        self._busy = True
+        self.status_var.set("Status: running get_stock_kbars...")
+        self._api_worker.submit(action, on_success, self._finish_error)
+
+    def _on_get_stock_kbars2(self) -> None:
+        code = self.code_var.get().strip()
+        begin = self.begin_var.get().strip()
+        end = self.end_var.get().strip()
+
+        def action() -> str:
+            return format_kbars2_report(get_stock_kbars2(code, begin, end))
+
+        def on_success(text: str) -> None:
+            self._busy = False
+            self._set_text_output(text)
+            self._update_status()
+
+        if self._busy:
+            self._set_error(RuntimeError("Another request is still running."))
+            return
+
+        self._busy = True
+        self.status_var.set("Status: running get_stock_kbars2...")
+        self._api_worker.submit(action, on_success, self._finish_error)
 
 
 def main() -> None:

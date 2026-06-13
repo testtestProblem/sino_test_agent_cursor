@@ -10,9 +10,11 @@ from sino_account.core import session
 from sino_account.core.serialize import resolve_account, serialize
 from sino_account.performance.analytics.quantity_units import (
     build_code_multipliers,
+    format_pnl_percent,
     format_shares_lots,
     merge_position_rows,
     merged_position_market_value,
+    merged_position_pnl_percent,
 )
 from sino_account.performance.data.contracts import build_code_units, resolve_stock_contract
 from sino_account.performance.data.throttle import throttle
@@ -83,27 +85,36 @@ def get_positions2(account: Any | None = None) -> dict[str, Any]:
     enriched: list[dict[str, Any]] = []
     total_market_value = 0.0
     total_unrealized_pnl = 0.0
+    total_cost_basis = 0.0
 
     for position in positions:
         code = str(position.get("code") or "")
         shares = float(position.get("shares") or 0)
         market_value, mv_warning = merged_position_market_value(position)
         pnl = float(position.get("pnl") or 0)
+        price = float(position.get("price") or 0)
+        cost_basis = price * shares if price > 0 and shares > 0 else market_value - pnl
 
         row = dict(position)
         row["name"] = _lookup_stock_name(api, code, name_cache) if code else ""
         row["shares_lots"] = format_shares_lots(shares)
         row["unit_label"] = "整股+零股"
         row["market_value"] = market_value
+        row["pnl_pct"] = merged_position_pnl_percent(position)
         if mv_warning:
             row["warning"] = mv_warning
         enriched.append(row)
 
         total_market_value += market_value
         total_unrealized_pnl += pnl
+        if cost_basis > 0:
+            total_cost_basis += cost_basis
 
     acc_balance = float((balance or {}).get("acc_balance") or 0)
     total_nav = acc_balance + total_market_value
+    total_pnl_pct = (
+        total_unrealized_pnl / total_cost_basis * 100.0 if total_cost_basis > 0 else None
+    )
 
     return {
         "balance": balance,
@@ -112,6 +123,7 @@ def get_positions2(account: Any | None = None) -> dict[str, Any]:
             "acc_balance": acc_balance,
             "total_market_value": total_market_value,
             "total_unrealized_pnl": total_unrealized_pnl,
+            "total_pnl_pct": total_pnl_pct,
             "total_nav": total_nav,
             "raw_count_common": len(common_positions),
             "raw_count_share": len(share_positions),
@@ -130,7 +142,7 @@ def format_positions2_report(data: dict[str, Any]) -> str:
     lines.append("=== 持倉明細（整股+零股已合併） ===")
     header = (
         f"{'代號':<8} {'名稱':<10} {'張/股':>10} {'股數':>10} "
-        f"{'成本價':>10} {'現價':>10} {'損益':>12} {'市值':>14}"
+        f"{'成本價':>10} {'現價':>10} {'損益':>12} {'損益%':>8} {'市值':>14}"
     )
     lines.append(header)
     lines.append("-" * len(header))
@@ -146,6 +158,7 @@ def format_positions2_report(data: dict[str, Any]) -> str:
             f"{float(row.get('price') or 0):>10.2f} "
             f"{float(row.get('last_price') or 0):>10.2f} "
             f"{float(row.get('pnl') or 0):>12.2f} "
+            f"{format_pnl_percent(row.get('pnl_pct')):>8} "
             f"{float(row.get('market_value') or 0):>14.2f}"
         )
         cond = row.get("cond")
@@ -160,6 +173,7 @@ def format_positions2_report(data: dict[str, Any]) -> str:
     lines.append(f"現金餘額:       {float(summary.get('acc_balance') or 0):>14,.2f}")
     lines.append(f"持倉市值:       {float(summary.get('total_market_value') or 0):>14,.2f}")
     lines.append(f"未實現損益:     {float(summary.get('total_unrealized_pnl') or 0):>14,.2f}")
+    lines.append(f"未實現損益%:   {format_pnl_percent(summary.get('total_pnl_pct')):>14}")
     lines.append(f"總資產 (NAV):   {float(summary.get('total_nav') or 0):>14,.2f}")
     lines.append(
         f"持倉筆數: {int(summary.get('position_count_total') or 0)} "

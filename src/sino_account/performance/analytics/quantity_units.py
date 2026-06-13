@@ -285,6 +285,31 @@ def merged_position_market_value(position: dict[str, Any]) -> tuple[float, str |
     return 0.0, f"持倉 {code} 無法估算市值（shares={shares:g}）"
 
 
+def merged_position_pnl_percent(position: dict[str, Any]) -> float | None:
+    """Unrealized P&L % for a merged row: pnl / cost_basis × 100."""
+    shares = float(position.get("shares") or 0)
+    if shares <= 0:
+        return None
+
+    price = float(position.get("price") or 0)
+    pnl = float(position.get("pnl") or 0)
+    cost_basis = price * shares
+    if cost_basis > 0:
+        return pnl / cost_basis * 100.0
+
+    last_price = float(position.get("last_price") or 0)
+    if last_price > 0 and price > 0:
+        return (last_price - price) / price * 100.0
+
+    return None
+
+
+def format_pnl_percent(pnl_pct: float | None) -> str:
+    if pnl_pct is None:
+        return "—"
+    return f"{pnl_pct:+.2f}%"
+
+
 def format_shares_lots(shares: float) -> str:
     """Format share count as lots + odd shares (e.g. 3張330股)."""
     total = int(shares)
