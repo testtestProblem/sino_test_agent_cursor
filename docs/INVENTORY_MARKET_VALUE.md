@@ -322,15 +322,13 @@ total_unrealized_pnl = Σ 各合併列的 pnl    # 每 (code, cond) 一筆，不
 | 合併股數 | src/sino_account/performance/analytics/quantity_units.py | combine_unit_shares, merge_position_rows |
 | 單檔市值 | src/sino_account/performance/analytics/quantity_units.py | merged_position_market_value |
 | 完整查詢流程 | src/sino_account/functions/get_positions2.py | get_positions2, format_positions2_report |
-| 單元測試 | tests/test_get_positions2.py | test_merge_matches_inventory_market_value_formula 等 |
 
 ---
 
 ## 十、驗證方式
 
 1. 執行 sino-gui → Login → Get Positions 2
-2. 與券商 APP 或庫存.xlsx 比對：
+2. 與券商 APP 比對：
    - 今日餘額 ↔ 合併後 total_shares
    - 現值 ↔ market_value
    - 現金 + 持倉現值 ↔ total_nav
-3. 執行 pytest tests/test_get_positions2.py 確認 0050 等案例通過

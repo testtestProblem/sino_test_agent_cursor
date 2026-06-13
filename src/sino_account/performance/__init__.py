@@ -1,1 +1,1 @@
-"""3-month stock account performance analysis."""
+"""Shared helpers for sino-gui position queries."""

@@ -176,18 +176,9 @@ snapshot_nav = acc_balance + total_market_value
 
 ---
 
-## 9. 已知不一致（文件化，程式待後續修正）
+## 9. 本 branch 範圍
 
-以下模組在撰寫本文件時 **尚未** 全面改用合併列；與 Get Positions 2 結果可能不一致：
-
-| 模組 | 現況 | 建議 |
-|------|------|------|
-| `get_positions2` | 已用 `merge_position_rows` | **Canonical** |
-| `holdings_timeline` | 已用 `combine_unit_shares` 算股數 | 回放股數正確 |
-| `collect_snapshot` + `unrealized.py` | raw 列 + `calc_positions_market_value` 逐列加總 | 應改用合併列 |
-| `performance-3m` / `nav-diagnose` | 經 snapshot 路徑，可能低估 NAV / 重複 pnl | 對齊 `get_positions2` |
-
-若 NAV 與 APP 或 `庫存.xlsx` 不符，先以 **Get Positions 2** 輸出比對，再追上述路徑。
+`sino_gui` branch 僅保留 sino-gui 與 Get Positions 2 所需模組。持倉市值以 `get_positions2` + `merge_position_rows` 為 **Canonical** 實作。
 
 ---
 
@@ -223,23 +214,10 @@ snapshot_nav = acc_balance + total_market_value
 
 ## 12. 驗證
 
-### 12.1 單元測試
-
-```bash
-python -m pytest tests/test_get_positions2.py -v
-```
-
-涵蓋：
-
-- `combine_unit_shares`（Share 列為總量 / 小零股相加）
-- `merge_position_rows`（0050 合併股數與 pnl）
-- `merged_position_market_value`（對齊庫存現值公式）
-- `format_shares_lots`
-
-### 12.2 手動驗證
+### 12.1 手動驗證
 
 1. `sino-gui` → Login → **Get Positions 2**
-2. 與券商 APP 或 `庫存.xlsx` 比對：
+2. 與券商 APP 比對：
    - **今日餘額** ↔ 合併後 `shares`
    - **現值** ↔ `market_value`
    - **現金 + 持倉現值** ↔ `total_nav`
@@ -248,7 +226,7 @@ python -m pytest tests/test_get_positions2.py -v
 
 ## 13. 相關文件
 
-- [SINO_API_GUIDE.md](./SINO_API_GUIDE.md) — API 使用與查詢流程
-- [SINO_GUI_ARCHITECTURE.md](./SINO_GUI_ARCHITECTURE.md) §9 — GUI 端 Positions 2 資料流（詳細演算法以本文件為準）
-- [PERFORMANCE_3M_ARCHITECTURE.md](./PERFORMANCE_3M_ARCHITECTURE.md) — 績效模組架構
-- [sino_API_full.md](../sino_API_full.md) — StockPosition 欄位參考
+- SINO_API_GUIDE.md — API 使用與查詢流程
+- SINO_GUI_ARCHITECTURE.md §9 — GUI 端 Positions 2 資料流
+- INVENTORY_MARKET_VALUE.md — 庫存市值逐步演算法
+- sino_API_full.md — StockPosition 欄位參考

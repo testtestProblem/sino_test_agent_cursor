@@ -164,25 +164,22 @@ Positions 2 市值公式為 `現價 × 合併後股數`，與券商庫存「現�
 
 ---
 
-## 8. 與其他 CLI 的關係
+## 8. CLI 入口
 
-| CLI | 用途 |
-|-----|------|
-| `sino-gui` | 本 Debug GUI |
-| `query-portfolio` | 命令列組合查詢 |
-| `performance-3m` | 3 個月績效報告 |
-| `nav-chart-gui` | 資金水位圖 |
-| `nav-diagnose` | 快照 NAV 診斷 |
+本 branch 僅保留 `sino-gui`：
 
-共用 [`core/session.py`](../src/sino_account/core/session.py)，但**同一時間只應有一個程式**持有 Shioaji 連線。不可同時開兩個 GUI 程式並各自 Login。
+```bash
+sino-gui
+```
+
+共用 core/session.py，**同一時間只應有一個程式**持有 Shioaji 連線。
 
 ---
 
 ## 9. 相關文件
 
-- [SINO_GUI_ARCHITECTURE.md](./SINO_GUI_ARCHITECTURE.md) — 完整技術架構
-- [SINO_API_GUIDE.md](./SINO_API_GUIDE.md) — Shioaji 帳務 API 使用指南（登入、查詢流程）
-- [SINO_POSITION_ALGORITHMS.md](./SINO_POSITION_ALGORITHMS.md) — 持倉股數、市值、NAV 演算法與 AI 反模式
-- [PERFORMANCE_3M_ARCHITECTURE.md](./PERFORMANCE_3M_ARCHITECTURE.md) — 績效模組（Positions 2 部分共用 `quantity_units`）
-- [NAV_CHART_ARCHITECTURE.md](./NAV_CHART_ARCHITECTURE.md) — 資金水位圖
-- [sino_API_full.md](../sino_API_full.md) — Shioaji API 參考
+- SINO_GUI_ARCHITECTURE.md — 完整技術架構
+- SINO_API_GUIDE.md — Shioaji 帳務 API 使用指南
+- SINO_POSITION_ALGORITHMS.md — 持倉股數、市值、NAV 演算法
+- INVENTORY_MARKET_VALUE.md — 庫存市值演算法與 API 用法
+- sino_API_full.md — Shioaji API 參考

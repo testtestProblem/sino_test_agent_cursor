@@ -227,7 +227,7 @@ Positions 2 在 `account_balance` → `list_positions(Common)` → `list_positio
 
 ## 9. 相關文件
 
-- [SINO_POSITION_ALGORITHMS.md](./SINO_POSITION_ALGORITHMS.md) — 持倉合併、市值、NAV
-- [SINO_GUI_ARCHITECTURE.md](./SINO_GUI_ARCHITECTURE.md) — GUI 模組與執行緒
-- [PERFORMANCE_3M_ARCHITECTURE.md](./PERFORMANCE_3M_ARCHITECTURE.md) — 績效報告管線
-- [sino_API_full.md](../sino_API_full.md) — API 完整參考
+- SINO_POSITION_ALGORITHMS.md — 持倉合併、市值、NAV
+- SINO_GUI_ARCHITECTURE.md — GUI 模組與執行緒
+- INVENTORY_MARKET_VALUE.md — 庫存市值演算法
+- sino_API_full.md — API 完整參考

@@ -6,15 +6,10 @@ requires-python = ">=3.8"
 dependencies = [
     "shioaji>=1.2.5",
     "python-dotenv>=1.0.0",
-    "matplotlib>=3.7.0",
 ]
 
 [project.scripts]
-query-portfolio = "sino_account.query_portfolio:main"
 sino-gui = "sino_account.gui.app:main"
-performance-3m = "sino_account.performance.report.build_report:main"
-nav-chart-gui = "sino_account.gui.nav_chart_app:main"
-nav-diagnose = "sino_account.performance.analytics.nav_diagnose:main"
 
 [build-system]
 requires = ["setuptools>=61"]

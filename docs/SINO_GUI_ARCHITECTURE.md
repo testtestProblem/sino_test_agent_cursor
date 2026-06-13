@@ -351,16 +351,10 @@ Positions 2 在 `account_balance` → `list_positions(Common)` → `list_positio
 
 ## 12. 測試與驗證
 
-| 檔案 | 內容 |
-|------|------|
-| [`tests/test_get_positions2.py`](../tests/test_get_positions2.py) | `combine_unit_shares`、合併列、市值公式、庫存對齊案例 |
-| [`scripts/verify_serialize.py`](../scripts/verify_serialize.py) | `FetchStatus` / `AccountType` JSON 序列化 |
+手動驗證：
 
-執行：
-
-```bash
-pytest tests/test_get_positions2.py -v
-```
+1. `sino-gui` → Login → Get Positions 2
+2. 比對券商 APP 的持倉股數、現值、總資產
 
 ---
 
@@ -378,15 +372,14 @@ pytest tests/test_get_positions2.py -v
 - 保持 **Login 時 `fetch_contract=True`** 若需要股票名稱
 - **勿**在 API 請求進行中呼叫 `api.fetch_contracts()`
 - 遵守帳務 API 速率限制；連續查詢可加 `throttle()`
-- 新增功能若需 kbars / 績效分析，請參考 [PERFORMANCE_3M_ARCHITECTURE.md](./PERFORMANCE_3M_ARCHITECTURE.md)
+- 新增功能若需 kbars / 績效分析，請在其他 branch（如 feature/performance-3m）開發
 
 ---
 
 ## 14. 相關文件
 
-- [SINO_GUI.md](./SINO_GUI.md) — 使用指南
-- [SINO_API_GUIDE.md](./SINO_API_GUIDE.md) — Shioaji 帳務 API 使用指南
-- [SINO_POSITION_ALGORITHMS.md](./SINO_POSITION_ALGORITHMS.md) — 持倉演算法與反模式
-- [PERFORMANCE_3M_ARCHITECTURE.md](./PERFORMANCE_3M_ARCHITECTURE.md) — 績效報告架構
-- [NAV_CHART_ARCHITECTURE.md](./NAV_CHART_ARCHITECTURE.md) — 資金水位圖
-- [sino_API_full.md](../sino_API_full.md) — Shioaji API 完整說明
+- SINO_GUI.md — 使用指南
+- SINO_API_GUIDE.md — Shioaji 帳務 API 使用指南
+- SINO_POSITION_ALGORITHMS.md — 持倉演算法與反模式
+- INVENTORY_MARKET_VALUE.md — 庫存市值演算法
+- sino_API_full.md — Shioaji API 完整說明
