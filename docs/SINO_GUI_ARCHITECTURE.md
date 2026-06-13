@@ -2,7 +2,7 @@
 
 ## 1. 文件目的
 
-本文件描述 **sino-gui**（[`src/sino_account/gui/app.py`](../src/sino_account/gui/app.py)）的程式架構、模組依賴、執行緒模型、Shioaji API 對照，以及 **Get Positions 2**、**Get Stock Kbars** 的資料流與演算法摘要。
+本文件描述 **sino-gui**（[`src/sino_account/gui/app.py`](../src/sino_account/gui/app.py)）的程式架構、模組依賴、執行緒模型、Shioaji API 對照，以及 **Get API Usage**、**Get Positions 2**、**Get Stock Kbars** 的資料流與演算法摘要。
 
 使用與操作說明見 [SINO_GUI.md](./SINO_GUI.md)。
 
@@ -22,7 +22,7 @@ test/
 │   └── INVENTORY_MARKET_VALUE.md
 ├── src/sino_account/
 │   ├── core/                       # session、serialize
-│   ├── functions/                  # login、get_*、get_stock_kbars
+│   ├── functions/                  # login、get_*、get_usage、get_stock_kbars
 │   ├── gui/
 │   │   └── app.py                  # sino-gui 主程式
 │   └── performance/                # Positions 2 / K 線 共用子集
@@ -50,6 +50,7 @@ flowchart TB
 
     subgraph func_layer [functions 層]
         Login[login.py]
+        GetUsage[get_usage.py]
         GetBalance[get_account_balance.py]
         GetPos[get_positions.py]
         GetPos2[get_positions2.py]
@@ -76,6 +77,7 @@ flowchart TB
     CLI --> Main --> App
     App --> Worker
     App --> Login
+    App --> GetUsage
     App --> GetBalance
     App --> GetPos
     App --> GetPos2
@@ -84,6 +86,8 @@ flowchart TB
     App --> Session
     App --> Serialize
     Login --> Session
+    GetUsage --> Session
+    GetUsage --> Serialize
     GetBalance --> Session
     GetBalance --> Serialize
     GetPos --> Session
@@ -107,6 +111,7 @@ flowchart TB
 | 入口 | `pyproject.toml` | `sino-gui` script、`shioaji` 依賴 |
 | GUI | `gui/app.py` | Tkinter 主視窗、ApiWorker |
 | Functions | `functions/login.py` | Login / Logout |
+| Functions | `functions/get_usage.py` | API 流量及連線數 |
 | Functions | `functions/get_account_info.py` | 帳戶列表 |
 | Functions | `functions/get_account_balance.py` | 餘額 |
 | Functions | `functions/get_positions.py` | 原始持倉 |
@@ -167,6 +172,7 @@ self._run_api("get_positions", lambda: get_positions(account))
 
 | 按鈕 | 格式化函式 |
 |------|------------|
+| Get API Usage | `format_usage_report()` |
 | Get Positions 2 | `format_positions2_report()` |
 | Get Stock Kbars | `format_kbars_report()` |
 | Get Stock Kbars 2 | `format_kbars2_report()` |
@@ -218,6 +224,8 @@ login(fetch_contract=True)
 - Shioaji enum（`FetchStatus`、`AccountType` 等）→ `.value`
 - `Kbars.dict()` → 平行陣列 `ts`, `Open`, `High`, `Low`, `Close`, `Volume`, `Amount`
 
+**注意**：`UsageOut`（`api.usage()`）**沒有** `.dict()`，`serialize()` 可能得到空 `{}`。`get_usage.py` 以 `_read_usage_int()` 直接讀 raw 物件屬性（`connections`、`bytes`、`limit_bytes`、`remaining_bytes`）。詳見 [SINO_API_GUIDE.md §6](./SINO_API_GUIDE.md#6-序列化與帳戶)。
+
 ### 7.2 帳戶輔助
 
 | 函式 | 用途 |
@@ -230,21 +238,22 @@ login(fetch_contract=True)
 
 ## 8. functions 與 Shioaji API 對照
 
-### 8.1 帳務查詢
+### 8.1 帳務與連線查詢
 
 | Function 模組 | Python 入口 | Shioaji API | 備註 |
 |---------------|-------------|-------------|------|
 | `login.py` | `login()` | `api.login(...)` | `fetch_contract` 參數 |
 | `login.py` | `logout()` | `api.logout()` | |
+| `get_usage.py` | `get_usage()` | `api.usage()` | **不需** Account；Login 後即可 |
 | `get_account_info.py` | `get_account_info()` | `api.list_accounts()` | |
 | `get_account_balance.py` | `get_account_balance(account)` | `api.account_balance(account=)` | |
 | `get_positions.py` | `get_positions(account)` | `api.list_positions(account=)` | 預設整股 |
-| `get_positions2.py` | `get_positions2(account)` | 見 §9 | 整股 + 零股 |
+| `get_positions2.py` | `get_positions2(account)` | 見 §10 | 整股 + 零股 |
 | `get_margin.py` | `get_margin(account)` | `api.margin(account=)` | |
 | `get_profit_loss.py` | `get_profit_loss(account, begin, end)` | `api.list_profit_loss(...)` | |
 | `get_settlements.py` | `get_settlements(account)` | `api.settlements(account=)` | 未來交割 |
 
-帳務 API 速率限制（永豐）：約 **5 秒內 25 次**。Positions 2 在連續呼叫間使用 `throttle()`（0.25 秒）。
+帳務 API 速率限制（永豐）：約 **5 秒內 25 次**。Positions 2 在連續呼叫間使用 `throttle()`（0.25 秒）。`api.usage()` 不計入帳務次數，但可反映 kbars 等消耗之**每日流量**（bytes）。
 
 ### 8.2 行情查詢
 
@@ -257,13 +266,48 @@ login(fetch_contract=True)
 
 ---
 
-## 9. Get Positions 2 演算法
+## 9. Get API Usage 演算法
+
+實作：[`get_usage.py`](../src/sino_account/functions/get_usage.py)
+
+### 9.1 資料流
+
+```mermaid
+flowchart LR
+    Login[已 Login] --> API[api.usage]
+    API --> Raw[UsageOut raw]
+    Raw --> Read[_read_usage_int x4]
+    Read --> Enrich[bytes_mb / limit_gb / used_percent]
+    Enrich --> Fmt[format_usage_report]
+```
+
+### 9.2 欄位讀取
+
+| 步驟 | 說明 |
+|------|------|
+| 1 | `api.usage()` 回傳 `UsageOut`（pyclass，無 `.dict()`） |
+| 2 | `_read_usage_int(raw, key, serialized)` 依序嘗試：`getattr` → `__getitem__` → `.dict()` → `serialize` fallback |
+| 3 | 換算 `bytes_mb`、`limit_gb`、`remaining_gb`；若 `limit_bytes > 0` 計算 `used_percent` |
+| 4 | 若全為 0，附加 `warning`（含 `serialize` 除錯資訊） |
+
+### 9.3 GUI 行為
+
+| 項目 | 說明 |
+|------|------|
+| 前置 | 已 Login；**不需**選 Account |
+| Handler | `_on_get_usage` → `format_usage_report(get_usage())` |
+| 輸出 | 純文字（`_set_text_output`） |
+| 重置 | 每日流量 08:00 重置（官方規則） |
+
+---
+
+## 10. Get Positions 2 演算法
 
 > **完整演算法、反模式與 NAV 公式**請以 [SINO_POSITION_ALGORITHMS.md](./SINO_POSITION_ALGORITHMS.md) 為 canonical 來源；本節保留 GUI 脈絡下的資料流摘要。
 
 實作：[`get_positions2.py`](../src/sino_account/functions/get_positions2.py) + [`quantity_units.py`](../src/sino_account/performance/analytics/quantity_units.py)
 
-### 9.1 資料流
+### 10.1 資料流
 
 ```mermaid
 flowchart LR
@@ -279,13 +323,13 @@ flowchart LR
     M --> F[format_positions2_report]
 ```
 
-### 9.2 原始列合併
+### 10.2 原始列合併
 
 1. `list_positions()` → 整股，標記 `unit=Common`
 2. `list_positions(unit=Unit.Share)` → 零股，標記 `unit=Share`
 3. 依 `(code, cond)` 分組（現股 / 融資等分開）
 
-### 9.3 股數合併 combine_unit_shares
+### 10.3 股數合併 combine_unit_shares
 
 永豐 API 特性：
 
@@ -312,7 +356,7 @@ return common_shares + share_shares  # Share 列 = 零股增量
 | Share | 3,300 股 | 3,300（總量，非 +3300） |
 | **合併** | | **3,300** |
 
-### 9.4 市值 merged_position_market_value
+### 10.4 市值 merged_position_market_value
 
 合併後**不可**對每列各加一次 `pnl`：
 
@@ -322,7 +366,7 @@ return common_shares + share_shares  # Share 列 = 零股增量
 | 2 | `price × total_shares + pnl`（pnl 只加一次） |
 | 3 | `pnl` fallback + warning |
 
-### 9.5 未實現損益% merged_position_pnl_percent
+### 10.5 未實現損益% merged_position_pnl_percent
 
 | 項目 | 公式 |
 |------|------|
@@ -331,7 +375,7 @@ return common_shares + share_shares  # Share 列 = 零股增量
 | 顯示 | `format_pnl_percent()` → 如 `+3.33%`、`—` |
 | 合計 | `total_pnl_pct = Σpnl ÷ Σcost_basis × 100` |
 
-### 9.6 合計
+### 10.6 合計
 
 | 欄位 | 公式 |
 |------|------|
@@ -340,11 +384,11 @@ return common_shares + share_shares  # Share 列 = 零股增量
 | `total_pnl_pct` | 合計未實現損益 ÷ 合計成本 |
 | `total_nav` | `acc_balance + total_market_value` |
 
-### 9.7 股票名稱
+### 10.7 股票名稱
 
 `resolve_stock_contract(api, code).name` — 需 Login 時 `fetch_contract=True` 載入商品檔。
 
-### 9.8 Get Positions vs Get Positions 2
+### 10.8 Get Positions vs Get Positions 2
 
 | 項目 | Get Positions | Get Positions 2 |
 |------|---------------|-----------------|
@@ -357,11 +401,11 @@ return common_shares + share_shares  # Share 列 = 零股增量
 
 ---
 
-## 10. Get Stock Kbars 演算法
+## 11. Get Stock Kbars 演算法
 
 實作：[`get_stock_kbars.py`](../src/sino_account/functions/get_stock_kbars.py)
 
-### 10.1 資料流
+### 11.1 資料流
 
 ```mermaid
 flowchart LR
@@ -377,14 +421,14 @@ flowchart LR
     G2 --> F2[format_kbars2_report]
 ```
 
-### 10.2 get_stock_kbars（分 K）
+### 11.2 get_stock_kbars（分 K）
 
 1. `resolve_stock_contract(api, code)` 取得商品檔
 2. `api.kbars(contract, start, end)` — 回傳平行陣列
 3. `_parse_kbars_rows()` — 展開為 `{datetime, Open, High, Low, Close, Volume, Amount}` 列
 4. `format_kbars_report()` — 表格輸出；超過 80 筆省略中間段
 
-### 10.3 get_stock_kbars2（日開收盤）
+### 11.3 get_stock_kbars2（日開收盤）
 
 在分 K 基礎上呼叫 `aggregate_daily_open_close()`：
 
@@ -395,7 +439,7 @@ flowchart LR
 
 `format_kbars2_report()` 只輸出：日期、開盤、收盤。
 
-### 10.4 GUI 輸入
+### 11.4 GUI 輸入
 
 | 控件 | 變數 | 用途 |
 |------|------|------|
@@ -404,7 +448,7 @@ flowchart LR
 
 ---
 
-## 11. Throttle
+## 12. Throttle
 
 [`performance/data/throttle.py`](../src/sino_account/performance/data/throttle.py)：
 
@@ -415,49 +459,50 @@ def throttle() -> None:
     time.sleep(QUERY_DELAY_SECONDS)
 ```
 
-Positions 2 在 `account_balance` → `list_positions(Common)` → `list_positions(Share)` 之間呼叫。K 線查詢目前未加 throttle（單次 `kbars` 呼叫）。
+Positions 2 在 `account_balance` → `list_positions(Common)` → `list_positions(Share)` 之間呼叫。K 線查詢目前未加 throttle（單次 `kbars` 呼叫）。大量 kbars 會消耗 `api.usage()` 的每日流量，開發時可先查 **Get API Usage** 確認剩餘 bytes。
 
 ---
 
-## 12. GUI 輸出格式
+## 13. GUI 輸出格式
 
 | 方法 | 使用時機 | 格式 |
 |------|----------|------|
 | `_set_output(payload)` | 帳務 JSON 按鈕 | `json.dumps(..., ensure_ascii=False, indent=2, default=str)` |
-| `_set_text_output(text)` | Positions 2、Kbars、Kbars 2 | 固定寬度純文字 |
+| `_set_text_output(text)` | Get API Usage、Positions 2、Kbars、Kbars 2 | 固定寬度純文字 |
 | `_set_error(exc)` | 例外 | `Error: {Type}: {message}` |
 
 ---
 
-## 13. 測試與驗證
+## 14. 測試與驗證
 
 | 功能 | 驗證方式 |
 |------|----------|
+| Get API Usage | Login 後連線數 ≥ 1；已用 / 上限 / 剩餘流量合理（非全 0） |
 | Get Positions 2 | 比對券商 APP 股數、現值、損益%、NAV |
 | Get Stock Kbars | 確認分 K 時間序列與 OHLCV 合理 |
 | Get Stock Kbars 2 | 確認每日開收盤與分 K 首尾一致 |
 
 ---
 
-## 14. 擴充指南
+## 15. 擴充指南
 
-### 14.1 新增 GUI 按鈕
+### 15.1 新增 GUI 按鈕
 
 1. 在 `functions/` 新增 wrapper（呼叫 Shioaji + `serialize`）
 2. 在 `app.py` `buttons` 列表加入 `(label, handler)`
 3. Handler 使用 `_run_api(...)` 或自訂 `ApiWorker.submit` + `_set_text_output`
 4. 所有 Shioaji 呼叫必須在 worker 執行緒內，不可在 Tkinter 主執行緒直接呼叫
 
-### 14.2 注意事項
+### 15.2 注意事項
 
 - 保持 **Login 時 `fetch_contract=True`**（持倉名稱、K 線商品檔）
 - **勿**在 API 請求進行中呼叫 `api.fetch_contracts()`
 - 帳務 API 遵守速率限制；連續查詢可加 `throttle()`
-- 行情 `kbars` 遵守 Shioaji 流量限制，避免短時間大量查詢
+- 行情 `kbars` 遵守 Shioaji 流量限制，避免短時間大量查詢；可用 **Get API Usage** 監控剩餘流量
 
 ---
 
-## 15. 相關文件
+## 16. 相關文件
 
 - [SINO_GUI.md](./SINO_GUI.md) — 使用指南
 - [SINO_API_GUIDE.md](./SINO_API_GUIDE.md) — Shioaji 帳務 API 使用指南

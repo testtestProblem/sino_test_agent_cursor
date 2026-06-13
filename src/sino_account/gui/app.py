@@ -18,6 +18,7 @@ from sino_account.functions.get_positions import get_positions
 from sino_account.functions.get_positions2 import format_positions2_report, get_positions2
 from sino_account.functions.get_profit_loss import default_date_range, get_profit_loss
 from sino_account.functions.get_settlements import get_settlements
+from sino_account.functions.get_usage import format_usage_report, get_usage
 from sino_account.functions.get_stock_kbars import (
     format_kbars2_report,
     format_kbars_report,
@@ -122,6 +123,7 @@ class ShioajiDebugApp:
         buttons = [
             ("Login", self._on_login),
             ("Logout", self._on_logout),
+            ("Get API Usage", self._on_get_usage),
             ("Get Account Info", self._on_get_account_info),
             ("Get Account Balance", self._on_get_account_balance),
             ("Get Positions", self._on_get_positions),
@@ -252,6 +254,23 @@ class ShioajiDebugApp:
 
         self._busy = True
         self.status_var.set("Status: running logout...")
+        self._api_worker.submit(action, on_success, self._finish_error)
+
+    def _on_get_usage(self) -> None:
+        def action() -> str:
+            return format_usage_report(get_usage())
+
+        def on_success(text: str) -> None:
+            self._busy = False
+            self._set_text_output(text)
+            self._update_status()
+
+        if self._busy:
+            self._set_error(RuntimeError("Another request is still running."))
+            return
+
+        self._busy = True
+        self.status_var.set("Status: running get_usage...")
         self._api_worker.submit(action, on_success, self._finish_error)
 
     def _on_get_account_info(self) -> None:

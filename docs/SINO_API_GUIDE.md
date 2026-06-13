@@ -64,12 +64,38 @@ api.login(api_key=..., secret_key=..., fetch_contract=True)
 | API | 用途 | 注意 |
 |-----|------|------|
 | `list_accounts()` | 帳戶列表 | 股票 / 期貨帳戶 |
-| `account_balance(account=)` | 現金餘額 | 重點欄位：`acc_balance` |
+| `usage()` | 流量及連線數 | **不需**指定帳戶；Login 後即可查 |
+| `account_balance(account=)` | 現金餘額 | 重點欄位：`acc_balance`；僅證券交割戶 |
 | `list_positions(account=)` | 持倉（**整股**） | `quantity` 單位為 **張**；**單獨呼叫不完整** |
 | `list_positions(account=, unit=Unit.Share)` | 持倉（**零股**） | `quantity` 單位為 **股**；必須與整股合併處理 |
 | `list_profit_loss(account, begin, end)` | 已實現損益 | `quantity` 通常為張 |
 | `settlements(account=)` | 未來交割 | T+0～T+2，**非**歷史現金流 |
 | `margin(account=)` | 期貨保證金 | 股票帳戶績效通常不用 |
+| `kbars(...)` | 歷史 K 線 | 行情 API，與帳務分開計次 |
+
+### UsageOut 常用欄位（`api.usage()`）
+
+（詳見 [`sino_API_full.md`](../sino_API_full.md) §流量及連線數查詢）
+
+| 欄位 | 說明 |
+|------|------|
+| `connections` | 目前連線數 |
+| `bytes` | 已使用流量（bytes） |
+| `limit_bytes` | 每日流量上限（bytes） |
+| `remaining_bytes` | 剩餘可用流量（bytes） |
+
+每日流量於**開盤日早上 08:00** 重置。近 30 日成交額分級決定上限（500MB / 2GB / 10GB，見官方文件）。
+
+```python
+usage = api.usage()
+print(
+    f"連線 {usage.connections}, "
+    f"已用 {usage.bytes / 1024 / 1024:.2f} MB / "
+    f"上限 {usage.limit_bytes / 1024 / 1024 / 1024:.2f} GB"
+)
+```
+
+專案封裝：[`get_usage.py`](../src/sino_account/functions/get_usage.py) → `get_usage()`、`format_usage_report()`；sino-gui 按鈕 **Get API Usage**。
 
 ### StockPosition 常用欄位
 
@@ -189,6 +215,15 @@ except (KeyError, TypeError):
 
 **Enum 序列化**：`AccountType`、`FetchStatus` 等 Shioaji builtin enum 會轉成 `.value`，避免 JSON 失敗。
 
+**MappingMixin 與 pyclass 差異**（常見陷阱）：
+
+| 回傳型別 | 典型 API | 建議讀法 |
+|----------|----------|----------|
+| `AccountBalance` 等 | `account_balance()` | 有 `.dict()`；`serialize()` 可轉成 dict |
+| `UsageOut` | `usage()` | **無** `.dict()`；`serialize()` 可能得到空 `{}`，須用 **屬性**（`usage.connections`、`usage.bytes` 等）或 `__getitem__` |
+
+`get_usage()` 實作見 [`get_usage.py`](../src/sino_account/functions/get_usage.py) 的 `_read_usage_int()`：先讀 raw 物件屬性，再 fallback 至 `serialize()` 結果。
+
 持倉 raw 列建議手動標記 `unit`：
 
 - `list_positions()` → `"Common"`
@@ -198,7 +233,9 @@ except (KeyError, TypeError):
 
 ## 7. 速率限制與 throttle
 
-永豐帳務 API 約 **5 秒內 25 次**（見 [`sino_API_full.md`](../sino_API_full.md)）。
+### 7.1 帳務 API
+
+永豐帳務 API 約 **5 秒內 25 次**（`account_balance`、`list_positions`、`list_profit_loss`、`settlements`、`margin` 等合計，見 [`sino_API_full.md`](../sino_API_full.md)）。
 
 [`throttle.py`](../src/sino_account/performance/data/throttle.py)：
 
@@ -210,14 +247,24 @@ throttle()  # 預設 sleep 0.25 秒
 
 Positions 2 在 `account_balance` → `list_positions(Common)` → `list_positions(Share)` 之間各呼叫一次 `throttle()`。
 
+### 7.2 行情 API
+
+`ticks`、`kbars`、`snapshots` 等約 **5 秒內 50 次**；盤中 `kbars` / `ticks` 另有單獨上限。查詢前可用 `api.usage()` 確認連線數與剩餘流量。
+
+### 7.3 每日流量
+
+`api.usage()` 回傳當日已用 / 上限 / 剩餘 bytes 與連線數，**不計入**上述「次數限制」，但 kbars 等大量下載會消耗 `bytes`。開發時避免短時間大量 kbars 查詢。
+
 ---
 
 ## 8. 專案內建參考實作
 
 | 需求 | 模組 |
 |------|------|
+| 流量及連線數 | [`get_usage.py`](../src/sino_account/functions/get_usage.py) |
 | 合併持倉 + 表格 + NAV 摘要 | [`get_positions2.py`](../src/sino_account/functions/get_positions2.py) |
 | 股數 / 市值演算法 | [`quantity_units.py`](../src/sino_account/performance/analytics/quantity_units.py) |
+| 股票 K 線（分 K / 日開收） | [`get_stock_kbars.py`](../src/sino_account/functions/get_stock_kbars.py) |
 | 帳戶快照（raw 列，見演算法文件警告） | [`collect_snapshot.py`](../src/sino_account/performance/data/collect_snapshot.py) |
 | 商品檔 / kbars | [`contracts.py`](../src/sino_account/performance/data/contracts.py) |
 | Debug GUI | [SINO_GUI.md](./SINO_GUI.md) |
