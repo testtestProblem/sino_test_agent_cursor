@@ -2,11 +2,11 @@
 
 ## 1. 文件目的
 
-本文件描述 **sino-gui**（[`src/sino_account/gui/app.py`](../src/sino_account/gui/app.py)）的程式架構、模組依賴、執行緒模型、Shioaji API 對照，以及 **Get API Usage**、**Get Positions 2**、**Get Stock Kbars** 的資料流與演算法摘要。
+本文件描述 **sino-gui**（[`src/sino_account/gui/app.py`](../src/sino_account/gui/app.py)）的程式架構、模組依賴、執行緒模型、Shioaji API 對照，以及 **Get API Usage**、**Get Positions 2**、**Get Daily NAV**、**Get Stock Kbars** 的資料流與演算法摘要。
 
 使用與操作說明見 [SINO_GUI.md](./SINO_GUI.md)。
 
-**範圍**：`sino_gui` branch 僅保留 `sino-gui` CLI 及其直接依賴的 `functions/`、`core/`、`performance/` 子集（Positions 2 與 K 線查詢）。不含 `performance-3m`、`nav-chart-gui` 等模組。
+**範圍**：`sino_gui` branch 僅保留 `sino-gui` CLI 及其直接依賴的 `functions/`、`core/`、`performance/` 子集（Positions 2、Daily NAV 與 K 線查詢）。不含 `performance-3m`、`nav-chart-gui` 等模組。
 
 ---
 
@@ -22,12 +22,13 @@ test/
 │   └── INVENTORY_MARKET_VALUE.md
 ├── src/sino_account/
 │   ├── core/                       # session、serialize
-│   ├── functions/                  # login、get_*、get_usage、get_stock_kbars
+│   ├── functions/                  # login、get_*、get_usage、get_daily_nav、get_stock_kbars
 │   ├── gui/
 │   │   └── app.py                  # sino-gui 主程式
-│   └── performance/                # Positions 2 / K 線 共用子集
+│   └── performance/                # Positions 2 / Daily NAV / K 線 共用子集
 │       ├── analytics/quantity_units.py
-│       └── data/contracts.py, throttle.py
+│       └── data/contracts.py, statements.py, throttle.py
+├── 庫存.xlsx / 對帳單.xlsx         # Get Daily NAV 必要（根目錄或 data/）
 ├── pyproject.toml                  # 僅 sino-gui entry point
 └── .env
 ```
@@ -54,6 +55,7 @@ flowchart TB
         GetBalance[get_account_balance.py]
         GetPos[get_positions.py]
         GetPos2[get_positions2.py]
+        GetDailyNav[get_daily_nav.py]
         GetKbars[get_stock_kbars.py]
         Others[get_margin / profit_loss / settlements / account_info]
     end
@@ -66,6 +68,7 @@ flowchart TB
     subgraph perf_subset [performance 子集]
         Qty[quantity_units.py]
         Contracts[contracts.py]
+        Statements[statements.py]
         Throttle[throttle.py]
     end
 
@@ -81,6 +84,7 @@ flowchart TB
     App --> GetBalance
     App --> GetPos
     App --> GetPos2
+    App --> GetDailyNav
     App --> GetKbars
     App --> Others
     App --> Session
@@ -95,6 +99,11 @@ flowchart TB
     GetPos2 --> Qty
     GetPos2 --> Contracts
     GetPos2 --> Throttle
+    GetDailyNav --> Session
+    GetDailyNav --> Serialize
+    GetDailyNav --> Statements
+    GetDailyNav --> GetKbars
+    GetDailyNav --> Throttle
     GetKbars --> Session
     GetKbars --> Contracts
     GetKbars --> Serialize
@@ -108,7 +117,7 @@ flowchart TB
 
 | 層級 | 路徑 | 用途 |
 |------|------|------|
-| 入口 | `pyproject.toml` | `sino-gui` script、`shioaji` 依賴 |
+| 入口 | `pyproject.toml` | `sino-gui` script、`shioaji`、`openpyxl` 依賴 |
 | GUI | `gui/app.py` | Tkinter 主視窗、ApiWorker |
 | Functions | `functions/login.py` | Login / Logout |
 | Functions | `functions/get_usage.py` | API 流量及連線數 |
@@ -117,6 +126,7 @@ flowchart TB
 | Functions | `functions/get_positions.py` | 原始持倉 |
 | Functions | `functions/get_positions2.py` | 合併持倉 + 報表 |
 | Functions | `functions/get_stock_kbars.py` | 分 K / 日開收盤 |
+| Functions | `functions/get_daily_nav.py` | 歷史每日 NAV（Excel + kbars） |
 | Functions | `functions/get_margin.py` | 保證金 |
 | Functions | `functions/get_profit_loss.py` | 損益（含預設日期） |
 | Functions | `functions/get_settlements.py` | 交割 |
@@ -124,7 +134,9 @@ flowchart TB
 | Core | `core/serialize.py` | JSON 序列化、帳戶 label |
 | 共用 | `performance/analytics/quantity_units.py` | 股數合併、市值、損益% |
 | 共用 | `performance/data/contracts.py` | 商品檔、股票名稱 |
+| 共用 | `performance/data/statements.py` | 對帳單 / 庫存 Excel 解析、持倉回放 |
 | 共用 | `performance/data/throttle.py` | 帳務 API 間隔 |
+| 資料 | `庫存.xlsx`、`對帳單.xlsx` | Get Daily NAV 必要輸入（根目錄或 `data/`） |
 | 設定 | `.env` | API 憑證 |
 
 `functions/__init__.py`、`gui/__init__.py` 為空檔，非必要。
@@ -176,6 +188,7 @@ self._run_api("get_positions", lambda: get_positions(account))
 | Get Positions 2 | `format_positions2_report()` |
 | Get Stock Kbars | `format_kbars_report()` |
 | Get Stock Kbars 2 | `format_kbars2_report()` |
+| Get Daily NAV | `format_daily_nav_report()` |
 
 ---
 
@@ -233,6 +246,8 @@ login(fetch_contract=True)
 | `account_label(account)` | GUI Combobox 顯示，如 `S \| 9A9X-0125618` |
 | `account_info(account)` | 結構化 dict |
 | `resolve_account(api, account)` | GUI 選中帳戶 → Account 物件；`None` 時用 `stock_account` 或第一個帳戶 |
+| `resolve_stock_account(api, account)` | 僅證券帳戶 (S)；Daily NAV 使用 |
+| `extract_acc_balance(balance)` | 讀取 `AccountBalance.acc_balance`（MappingMixin 相容） |
 
 ---
 
@@ -251,6 +266,7 @@ login(fetch_contract=True)
 | `get_positions2.py` | `get_positions2(account)` | 見 §10 | 整股 + 零股 |
 | `get_margin.py` | `get_margin(account)` | `api.margin(account=)` | |
 | `get_profit_loss.py` | `get_profit_loss(account, begin, end)` | `api.list_profit_loss(...)` | |
+| `get_daily_nav.py` | `get_daily_nav_history(account, start, end)` | 見 §12 | Excel + kbars + account_balance |
 | `get_settlements.py` | `get_settlements(account)` | `api.settlements(account=)` | 未來交割 |
 
 帳務 API 速率限制（永豐）：約 **5 秒內 25 次**。Positions 2 在連續呼叫間使用 `throttle()`（0.25 秒）。`api.usage()` 不計入帳務次數，但可反映 kbars 等消耗之**每日流量**（bytes）。
@@ -448,7 +464,120 @@ flowchart LR
 
 ---
 
-## 12. Throttle
+## 12. Get Daily NAV 演算法
+
+實作：[`get_daily_nav.py`](../src/sino_account/functions/get_daily_nav.py) + [`statements.py`](../src/sino_account/performance/data/statements.py) + [`get_stock_kbars.py`](../src/sino_account/functions/get_stock_kbars.py)
+
+### 12.1 為何需要 Excel
+
+Shioaji 帳務 API **無法**取得歷史每日持倉：
+
+| API | 能提供 | 無法提供 |
+|-----|--------|----------|
+| `list_positions` | 目前股數 | 買進日期、歷史持倉 |
+| `list_profit_loss` | 已平倉**賣出** | 買進紀錄 |
+| `account_balance` | 目前現金 | 歷史現金 |
+
+因此 Get Daily NAV 以券商匯出的 **`庫存.xlsx`**（目前持股）與 **`對帳單.xlsx`**（完整買賣）為持倉來源；股價仍用 **kbars 收盤價**；現金以期末 `acc_balance` 往回扣對帳單金流（不含股息／入金／出金）。
+
+### 12.2 資料流
+
+```mermaid
+flowchart TB
+    subgraph excel [Excel 本地檔]
+        Inv[庫存.xlsx 今日餘額]
+        Stmt[對帳單.xlsx 成交明細]
+    end
+
+    subgraph replay [持倉回放]
+        Inv --> RH[reconstruct_holdings_on]
+        Stmt --> RH
+        Stmt --> RC[reconstruct_cash_on]
+        Bal[account_balance] --> RC
+    end
+
+    subgraph prices [行情]
+        Cal[2330 kbars 交易日曆]
+        Kbars[各持股 kbars 收盤價]
+    end
+
+    RH --> MV[Σ shares × close]
+    Kbars --> MV
+    RC --> NAV[nav = cash + market_value]
+    MV --> NAV
+    NAV --> Fmt[format_daily_nav_report]
+    Cal --> Fmt
+```
+
+### 12.3 Excel 解析 statements.py
+
+| 函式 | 輸入 | 輸出 |
+|------|------|------|
+| `load_inventory(path?)` | `庫存.xlsx` | `{holdings, names, market_value, total_market_value}` |
+| `load_statement(path?)` | `對帳單.xlsx` | 交易列 list（date, code, action, shares, delta, cashflow） |
+| `reconstruct_holdings_on(inv, trades, as_of)` | 庫存 + 對帳單 | `{code: shares}` 於 `as_of` 收盤後 |
+| `reconstruct_cash_on(cash_now, trades, as_of)` | 期末現金 + 對帳單 | 推估現金 |
+
+**檔案搜尋順序**：`statement_path` / `inventory_path` 參數 → 專案根目錄 → `data/`。
+
+**對帳單買賣符號**（`_TRADE_SIGN`）：
+
+| 買賣 | delta（股數） |
+|------|----------------|
+| 現買、券買 | +quantity |
+| 現賣、券賣 | −quantity |
+
+`quantity` 單位為**股**（與永豐對帳單匯出一致）。融券放空期間股數可為負（如 2408 券賣後為 −1000，券買回補後歸零）。
+
+**持倉回放**：
+
+```
+holdings(D) = inventory_now − Σ delta  (成交日 > D)
+cash(D)     = ending_cash   − Σ cashflow (成交日 > D)
+```
+
+其中 `cashflow = 應收金額 − 應付金額`（單筆成交）。
+
+### 12.4 交易日與收盤價
+
+1. 先取 **2330** kbars，彙總為 `{date: close}` → **交易日曆**（休市日無列）
+2. 對區間內每個交易日 `D`，呼叫 `reconstruct_holdings_on(..., D)`
+3. 對所有曾出現的 code（不含 2330 本身若未持有）各呼叫 `get_stock_kbars` → `aggregate_daily_open_close`
+4. 某日若**任一**持股缺收盤價 → **整列略過**（不插值）
+
+持倉市值：`market_value(D) = Σ shares(code, D) × close(code, D)`  
+總資產：`nav(D) = cash(D) + market_value(D)`
+
+### 12.5 與 Positions 2 / 庫存表對照
+
+| 項目 | Get Positions 2 | Get Daily NAV |
+|------|-----------------|---------------|
+| 持倉股數 | API 合併 | Excel 回放（可驗證：最後一日 = 庫存今日餘額） |
+| 市值單價 | `last_price` | kbars **收盤價** |
+| 庫存「現值」 | — | 報表標示 `snapshot_market_value`；與最後一日 kbars 市值偏差 >5% 時提示 |
+| 現金 | `acc_balance` | 期末 balance + 對帳單回放（近似） |
+
+Positions 2 的股數合併（Common/Share）**不**用於 Daily NAV；Excel 已為股數。
+
+### 12.6 GUI 行為
+
+| 項目 | 說明 |
+|------|------|
+| Handler | `_on_get_daily_nav` → `format_daily_nav_report(get_daily_nav_history(...))` |
+| 輸入 | Account、Begin、End；**Code 無關** |
+| 輸出 | 純文字表格 + 提示區 |
+| API 次數 | `account_balance` ×1 + kbars ×(1 + 持股檔數)；連續 kbars 間 `throttle()` |
+| 流量 | 大量 kbars 消耗 `api.usage()` bytes；查詢前可先 **Get API Usage** |
+
+### 12.7 限制與警告
+
+- Begin 早於對帳單起日：更早日期持倉視為**區間外底倉**（由庫存往回推）
+- 現金不含股息、入金、出金
+- 除權息、報價來源差異可能造成 kbars 市值 vs 庫存現值偏差
+
+---
+
+## 13. Throttle
 
 [`performance/data/throttle.py`](../src/sino_account/performance/data/throttle.py)：
 
@@ -459,50 +588,53 @@ def throttle() -> None:
     time.sleep(QUERY_DELAY_SECONDS)
 ```
 
-Positions 2 在 `account_balance` → `list_positions(Common)` → `list_positions(Share)` 之間呼叫。K 線查詢目前未加 throttle（單次 `kbars` 呼叫）。大量 kbars 會消耗 `api.usage()` 的每日流量，開發時可先查 **Get API Usage** 確認剩餘 bytes。
+Positions 2 在 `account_balance` → `list_positions(Common)` → `list_positions(Share)` 之間呼叫。Daily NAV 在 `account_balance` 與各檔 `kbars` 之間呼叫。K 線單次查詢目前未加 throttle（單次 `kbars` 呼叫）。大量 kbars 會消耗 `api.usage()` 的每日流量，開發時可先查 **Get API Usage** 確認剩餘 bytes。
 
 ---
 
-## 13. GUI 輸出格式
+## 14. GUI 輸出格式
 
 | 方法 | 使用時機 | 格式 |
 |------|----------|------|
 | `_set_output(payload)` | 帳務 JSON 按鈕 | `json.dumps(..., ensure_ascii=False, indent=2, default=str)` |
-| `_set_text_output(text)` | Get API Usage、Positions 2、Kbars、Kbars 2 | 固定寬度純文字 |
+| `_set_text_output(text)` | Get API Usage、Positions 2、Daily NAV、Kbars、Kbars 2 | 固定寬度純文字 |
 | `_set_error(exc)` | 例外 | `Error: {Type}: {message}` |
 
 ---
 
-## 14. 測試與驗證
+## 15. 測試與驗證
 
 | 功能 | 驗證方式 |
 |------|----------|
 | Get API Usage | Login 後連線數 ≥ 1；已用 / 上限 / 剩餘流量合理（非全 0） |
 | Get Positions 2 | 比對券商 APP 股數、現值、損益%、NAV |
+| Get Daily NAV | 最後一日持倉檔數 = 庫存.xlsx 列數；最後一日股數 = 庫存「今日餘額」；區間內檔數隨買賣變動 |
 | Get Stock Kbars | 確認分 K 時間序列與 OHLCV 合理 |
 | Get Stock Kbars 2 | 確認每日開收盤與分 K 首尾一致 |
 
 ---
 
-## 15. 擴充指南
+## 16. 擴充指南
 
-### 15.1 新增 GUI 按鈕
+### 16.1 新增 GUI 按鈕
 
 1. 在 `functions/` 新增 wrapper（呼叫 Shioaji + `serialize`）
 2. 在 `app.py` `buttons` 列表加入 `(label, handler)`
 3. Handler 使用 `_run_api(...)` 或自訂 `ApiWorker.submit` + `_set_text_output`
 4. 所有 Shioaji 呼叫必須在 worker 執行緒內，不可在 Tkinter 主執行緒直接呼叫
 
-### 15.2 注意事項
+### 16.2 注意事項
 
 - 保持 **Login 時 `fetch_contract=True`**（持倉名稱、K 線商品檔）
 - **勿**在 API 請求進行中呼叫 `api.fetch_contracts()`
 - 帳務 API 遵守速率限制；連續查詢可加 `throttle()`
 - 行情 `kbars` 遵守 Shioaji 流量限制，避免短時間大量查詢；可用 **Get API Usage** 監控剩餘流量
 
+- Get Daily NAV 需維護 **`庫存.xlsx`**、**`對帳單.xlsx`** 與券商資料同步
+
 ---
 
-## 16. 相關文件
+## 17. 相關文件
 
 - [SINO_GUI.md](./SINO_GUI.md) — 使用指南
 - [SINO_API_GUIDE.md](./SINO_API_GUIDE.md) — Shioaji 帳務 API 使用指南

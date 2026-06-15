@@ -8,3 +8,6 @@ build/
 *.log
 data/cache/
 reports/
+# Broker exports (local; contain account trades and holdings)
+對帳單.xlsx
+庫存.xlsx

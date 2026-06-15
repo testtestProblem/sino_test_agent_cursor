@@ -359,88 +359,10 @@ def calc_positions_market_value(
 
 
 
-def infer_trade_undo_shares(trade: dict[str, Any]) -> float:
-
-    """Estimate share count for zero-quantity (odd-lot) closed trades."""
-
-    quantity = float(trade.get("quantity") or 0)
-
-    if quantity > 0:
-
-        return 0.0
-
-
-
-    share_qty = trade.get("share_quantity") or trade.get("shares")
-
-    if share_qty is not None:
-
-        return float(share_qty)
-
-
-
-    pnl = float(trade.get("pnl") or 0)
-
-    price = float(trade.get("price") or 0)
-
-    pr_ratio = trade.get("pr_ratio")
-
-    if not pnl or not price or pr_ratio is None:
-
-        return 0.0
-
-
-
-    pr = float(pr_ratio)
-
-    if pr == 0:
-
-        return 0.0
-
-
-
-    cost_basis = pnl / pr
-
-    proceeds = cost_basis + pnl
-
-    if price <= 0:
-
-        return 0.0
-
-    return proceeds / price
-
-
-
-
-
-def trade_undo_shares(
-
-    trade: dict[str, Any],
-
-    multipliers: dict[str, float],
-
-) -> float:
-
-    shares = quantity_to_shares(trade, multipliers)
-
-    if shares > 0:
-
-        return shares
-
-    return infer_trade_undo_shares(trade)
-
-
-
-
-
 def position_to_shares(
-
     position: dict[str, Any],
-
     multipliers: dict[str, float],
-
 ) -> float:
-
     return quantity_to_shares(position, multipliers)
 
 

@@ -18,6 +18,7 @@ from sino_account.functions.get_positions import get_positions
 from sino_account.functions.get_positions2 import format_positions2_report, get_positions2
 from sino_account.functions.get_profit_loss import default_date_range, get_profit_loss
 from sino_account.functions.get_settlements import get_settlements
+from sino_account.functions.get_daily_nav import format_daily_nav_report, get_daily_nav_history
 from sino_account.functions.get_usage import format_usage_report, get_usage
 from sino_account.functions.get_stock_kbars import (
     format_kbars2_report,
@@ -133,6 +134,7 @@ class ShioajiDebugApp:
             ("Get Settlements", self._on_get_settlements),
             ("Get Stock Kbars", self._on_get_stock_kbars),
             ("Get Stock Kbars 2", self._on_get_stock_kbars2),
+            ("Get Daily NAV", self._on_get_daily_nav),
         ]
         for index, (label, handler) in enumerate(buttons):
             ttk.Button(button_frame, text=label, command=handler, width=22).grid(
@@ -381,6 +383,27 @@ class ShioajiDebugApp:
 
         self._busy = True
         self.status_var.set("Status: running get_stock_kbars2...")
+        self._api_worker.submit(action, on_success, self._finish_error)
+
+    def _on_get_daily_nav(self) -> None:
+        account = self._selected_account()
+        begin = self.begin_var.get().strip()
+        end = self.end_var.get().strip()
+
+        def action() -> str:
+            return format_daily_nav_report(get_daily_nav_history(account, begin, end))
+
+        def on_success(text: str) -> None:
+            self._busy = False
+            self._set_text_output(text)
+            self._update_status()
+
+        if self._busy:
+            self._set_error(RuntimeError("Another request is still running."))
+            return
+
+        self._busy = True
+        self.status_var.set("Status: running get_daily_nav...")
         self._api_worker.submit(action, on_success, self._finish_error)
 
 
