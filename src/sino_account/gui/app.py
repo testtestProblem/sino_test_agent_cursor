@@ -18,6 +18,7 @@ from sino_account.functions.get_positions import get_positions
 from sino_account.functions.get_positions2 import format_positions2_report, get_positions2
 from sino_account.functions.get_profit_loss import default_date_range, get_profit_loss
 from sino_account.functions.get_settlements import get_settlements
+from sino_account.functions.get_trading_limits import format_trading_limits_report, get_trading_limits
 from sino_account.functions.get_daily_nav import format_daily_nav_report, get_daily_nav_history
 from sino_account.functions.get_usage import format_usage_report, get_usage
 from sino_account.functions.get_stock_kbars import (
@@ -132,6 +133,7 @@ class ShioajiDebugApp:
             ("Get Margin", self._on_get_margin),
             ("Get Profit/Loss", self._on_get_profit_loss),
             ("Get Settlements", self._on_get_settlements),
+            ("Get Trading Limits", self._on_get_trading_limits),
             ("Get Stock Kbars", self._on_get_stock_kbars),
             ("Get Stock Kbars 2", self._on_get_stock_kbars2),
             ("Get Daily NAV", self._on_get_daily_nav),
@@ -342,6 +344,25 @@ class ShioajiDebugApp:
             "get_settlements",
             lambda selected=account: get_settlements(selected),
         )
+
+    def _on_get_trading_limits(self) -> None:
+        account = self._selected_account()
+
+        def action() -> str:
+            return format_trading_limits_report(get_trading_limits(account))
+
+        def on_success(text: str) -> None:
+            self._busy = False
+            self._set_text_output(text)
+            self._update_status()
+
+        if self._busy:
+            self._set_error(RuntimeError("Another request is still running."))
+            return
+
+        self._busy = True
+        self.status_var.set("Status: running get_trading_limits...")
+        self._api_worker.submit(action, on_success, self._finish_error)
 
     def _on_get_stock_kbars(self) -> None:
         code = self.code_var.get().strip()

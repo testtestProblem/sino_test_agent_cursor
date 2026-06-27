@@ -533,10 +533,16 @@ flowchart TB
 
 ```
 holdings(D) = inventory_now − Σ delta  (成交日 > D)
-cash(D)     = ending_cash   − Σ cashflow (成交日 > D)
 ```
 
-其中 `cashflow = 應收金額 − 應付金額`（單筆成交）。
+**現金回放**（台股 T+2 交割）：
+
+```
+settlement_date = 成交日 + 2 個交易日（以 2330 kbars 交易日曆計算）
+cash(D) = ending_cash − Σ cashflow (settlement_date > D)
+```
+
+其中 `cashflow = 應收金額 − 應付金額`（單筆成交）。持倉仍以**成交日**變動；現金以**交割日**變動。
 
 ### 12.4 交易日與收盤價
 
@@ -573,6 +579,7 @@ Positions 2 的股數合併（Common/Share）**不**用於 Daily NAV；Excel 已
 
 - Begin 早於對帳單起日：更早日期持倉視為**區間外底倉**（由庫存往回推）
 - 現金不含股息、入金、出金
+- 成交日～T+2 交割日前：持倉（成交日）與現金（交割日）時間點不同，該段 NAV 可能略偏
 - 除權息、報價來源差異可能造成 kbars 市值 vs 庫存現值偏差
 
 ---

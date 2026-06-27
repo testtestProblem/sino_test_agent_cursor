@@ -17,6 +17,8 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from sino_account.performance.date_range import STOCK_SETTLEMENT_LAG, settlement_date
+
 STATEMENT_FILENAME = "對帳單.xlsx"
 INVENTORY_FILENAME = "庫存.xlsx"
 
@@ -93,7 +95,7 @@ def load_statement(path: str | Path | None = None) -> list[dict[str, Any]]:
 
     Each row: {date, code, name, action, shares, price, amount, cashflow, delta}.
     - delta:    signed share change (+buy / -sell), used for backward holdings replay.
-    - cashflow: signed cash change (+應收 on sell, -應付 on buy), trade-driven only.
+    - cashflow: signed cash change (+應收 on sell, -應付 on buy); applied on settlement_date.
     """
     statement_path = _resolve_path(path, STATEMENT_FILENAME)
     workbook = load_workbook(statement_path, read_only=True, data_only=True)
@@ -152,6 +154,34 @@ def load_statement(path: str | Path | None = None) -> list[dict[str, Any]]:
 
     trades.sort(key=lambda row: row["date"])
     return trades
+
+
+def annotate_settlement_dates(
+    trades: list[dict[str, Any]],
+    trading_days: list[str],
+    lag: int = STOCK_SETTLEMENT_LAG,
+) -> None:
+    """Set settlement_date on each trade (T+lag cash movement). Modifies trades in place."""
+    for trade in trades:
+        trade["settlement_date"] = settlement_date(trade["date"], trading_days, lag=lag)
+
+
+def reconstruct_cash_on(
+    cash_now: float,
+    trades: list[dict[str, Any]],
+    as_of: str,
+) -> float:
+    """Cash at the close of `as_of`, walking backward from ending balance.
+
+    Uses settlement_date (T+2) when present; holdings still use trade date.
+    Ignores dividends, deposits, and withdrawals outside the statement.
+    """
+    cash = cash_now
+    for trade in trades:
+        cash_date = str(trade.get("settlement_date") or trade.get("date") or "")
+        if cash_date > as_of:
+            cash -= trade["cashflow"]
+    return cash
 
 
 def load_inventory(path: str | Path | None = None) -> dict[str, Any]:
@@ -223,16 +253,3 @@ def reconstruct_holdings_on(
             code = trade["code"]
             holdings[code] = holdings.get(code, 0.0) - trade["delta"]
     return {code: shares for code, shares in holdings.items() if abs(shares) > 1e-9}
-
-
-def reconstruct_cash_on(
-    cash_now: float,
-    trades: list[dict[str, Any]],
-    as_of: str,
-) -> float:
-    """Trade-only cash at the close of `as_of` (ignores dividends/deposits/withdrawals)."""
-    cash = cash_now
-    for trade in trades:
-        if trade["date"] > as_of:
-            cash -= trade["cashflow"]
-    return cash

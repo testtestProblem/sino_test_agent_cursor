@@ -115,7 +115,7 @@ python -m sino_account.gui.app
 | 按鈕 | 前置條件 | 輸出 | 說明 |
 |------|----------|------|------|
 | **Get Account Balance** | 已登入 + 選帳戶 | JSON | 現金餘額 `acc_balance` |
-| **Get Positions** | 已登入 + 選帳戶 | JSON | 原始 `list_positions()`（預設整股） |
+| **Get Positions** | 已登入 + 選帳戶 | JSON | `list_positions(unit=Unit.Share)`（股數，已含整股） |
 | **Get Positions 2** | 已登入 + 選帳戶 | 純文字 | 合併整股/零股、名稱、市值、損益%、NAV 合計 |
 | **Get Margin** | 已登入 + 選帳戶 | JSON | 期貨保證金（主要供期貨帳戶） |
 | **Get Profit/Loss** | 已登入 + 選帳戶 + Begin/End | JSON | 區間內已實現損益明細 |
@@ -173,7 +173,7 @@ python -m sino_account.gui.app
 
 Positions 2 表格欄位：代號、名稱、張/股、股數、成本價、現價、損益、**損益%**、市值。
 
-合併與市值公式見 [SINO_GUI_ARCHITECTURE.md §10](./SINO_GUI_ARCHITECTURE.md#10-get-positions-2-演算法)、[INVENTORY_MARKET_VALUE.md](./INVENTORY_MARKET_VALUE.md)。
+合併與市值公式見 [SINO_GUI_ARCHITECTURE.md §10](./SINO_GUI_ARCHITECTURE.md#10-get-positions-2-演算法)、[INVENTORY_MARKET_VALUE.md](./INVENTORY_MARKET_VALUE.md)。**股價值與 NAV 計算**（含 T+1／T+2 交割款、融資／融券盈虧）見 [POSITIONS2_NAV.md](./POSITIONS2_NAV.md)。
 
 ### 6.7 Get Stock Kbars vs Get Stock Kbars 2
 
@@ -197,7 +197,7 @@ Positions 2 表格欄位：代號、名稱、張/股、股數、成本價、現�
 | 持倉來源 | `庫存.xlsx` 的「今日餘額」＝目前股數；`對帳單.xlsx` 每筆成交往回扣 |
 | 股價來源 | Shioaji `api.kbars()` → 每日**收盤價**（當日最後一根分 K 的 Close） |
 | 交易日 | 以 **2330** 有 kbars 的日期為準；**休市日不輸出** |
-| 現金 | 目前 `account_balance`，往回扣對帳單買賣金額（**不含**股息、入金、出金） |
+| 現金 | 目前 `account_balance`，依 **T+2 交割日**往回扣對帳單應付/應收（**非成交日**；不含股息、入金、出金） |
 | 輸出 | 純文字表格：日期、現金、持倉市值、總資產、持倉檔數 |
 
 **Excel 檔案說明**
@@ -211,7 +211,7 @@ Positions 2 表格欄位：代號、名稱、張/股、股數、成本價、現�
 
 ```
 持倉(D) = 庫存今日餘額 − Σ(對帳單中 成交日 > D 的淨股數變動)
-現金(D) = 期末 acc_balance − Σ(對帳單中 成交日 > D 的淨現金流)
+現金(D) = 期末 acc_balance − Σ(對帳單中 交割日 > D 的淨現金流)   ← 交割日 = 成交日 + 2 個交易日 (T+2)
 持倉市值(D) = Σ 持倉股數 × 該日收盤價
 總資產(D) = 現金(D) + 持倉市值(D)
 ```
@@ -307,7 +307,8 @@ Positions 2 市值公式為 `現價 × 合併後股數`，與券商庫存「現�
 
 - 持倉市值用 **kbars 收盤價 × 股數**；庫存表「現值」用券商 **現價**，來源與時間可能不同
 - 除權息、報價延遲會造成數％偏差；報表偏差 >5% 會提示
-- **現金**未含股息、入金、出金，歷史現金為近似值；**持倉股數**由 Excel 精準重建
+- **現金**依 T+2 **交割日**回放（非成交日）；未含股息、入金、出金
+- 成交日～交割日前：持倉已變、現金尚未扣/入帳，總資產在這段可能略有不準
 
 ### 7.10 Windows 中文或路徑問題
 

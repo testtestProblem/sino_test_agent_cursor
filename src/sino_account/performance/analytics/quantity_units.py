@@ -218,6 +218,10 @@ def merge_position_rows(
         cost_shares = 0.0
         pnl = 0.0
         last_price = 0.0
+        margin_purchase_amount = 0
+        short_sale_margin = 0
+        collateral = 0
+        interest = 0
         template = rows[0]
 
         for row in rows:
@@ -237,6 +241,12 @@ def merge_position_rows(
             row_last = float(row.get("last_price") or 0)
             if row_last > 0:
                 last_price = row_last
+            margin_purchase_amount = max(
+                margin_purchase_amount, int(row.get("margin_purchase_amount") or 0)
+            )
+            short_sale_margin = max(short_sale_margin, int(row.get("short_sale_margin") or 0))
+            collateral = max(collateral, int(row.get("collateral") or 0))
+            interest = max(interest, int(row.get("interest") or 0))
             if shares > 0:
                 template = row
 
@@ -258,6 +268,10 @@ def merge_position_rows(
                 "price": avg_price,
                 "last_price": last_price,
                 "pnl": pnl,
+                "margin_purchase_amount": margin_purchase_amount,
+                "short_sale_margin": short_sale_margin,
+                "collateral": collateral,
+                "interest": interest,
             }
         )
 

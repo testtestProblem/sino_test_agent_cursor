@@ -11,6 +11,7 @@ Non-trading days (no kbar for the calendar code 2330) are skipped.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 from sino_account.core import session
@@ -18,14 +19,17 @@ from sino_account.core.serialize import extract_acc_balance, resolve_stock_accou
 from sino_account.functions.get_profit_loss import default_date_range
 from sino_account.functions.get_stock_kbars import aggregate_daily_open_close, get_stock_kbars
 from sino_account.performance.data.statements import (
+    annotate_settlement_dates,
     load_inventory,
     load_statement,
     reconstruct_cash_on,
     reconstruct_holdings_on,
 )
 from sino_account.performance.data.throttle import throttle
+from sino_account.performance.date_range import STOCK_SETTLEMENT_LAG
 
 CALENDAR_CODE = "2330"
+CALENDAR_BUFFER_DAYS = 14
 
 
 def _daily_close_map_from_kbars(code: str, start: str, end: str) -> dict[str, float]:
@@ -82,9 +86,15 @@ def get_daily_nav_history(
 
     ending_cash, balance = _fetch_ending_cash(api, target)
 
+    calendar_start = min(start, statement_min) if statement_min else start
+    calendar_end = (date.fromisoformat(end) + timedelta(days=CALENDAR_BUFFER_DAYS)).isoformat()
+
     throttle()
-    calendar_closes = _daily_close_map_from_kbars(CALENDAR_CODE, start, end)
-    trading_days = sorted(day for day in calendar_closes if start <= day <= end)
+    calendar_closes = _daily_close_map_from_kbars(CALENDAR_CODE, calendar_start, calendar_end)
+    all_trading_days = sorted(calendar_closes.keys())
+    annotate_settlement_dates(trades, all_trading_days, lag=STOCK_SETTLEMENT_LAG)
+
+    trading_days = sorted(day for day in all_trading_days if start <= day <= end)
 
     if not trading_days:
         warnings.append(f"找不到交易日曆 {CALENDAR_CODE} 的 kbars（請確認 Login fetch_contract=True 與日期）。")
@@ -169,7 +179,8 @@ def get_daily_nav_history(
     elif ending_cash == 0.0 and status and status != "Fetched":
         warnings.append(f"account_balance 狀態: {status}")
     warnings.append(
-        "現金以目前 account_balance 往回扣對帳單買賣推估（未含股息、入金、出金）。"
+        f"現金依 T+{STOCK_SETTLEMENT_LAG} 交割日回放（應付/應收入帳日，非成交日）；"
+        "未含股息、入金、出金。持倉仍以成交日回放。"
     )
 
     return {
